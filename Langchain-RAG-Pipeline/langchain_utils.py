@@ -5,7 +5,7 @@ from langchain.memory import ConversationBufferWindowMemory, CombinedMemory
 from langchain_core.prompts.prompt import PromptTemplate
 from constants import prompt_number_snippets, gpt_model_to_use, gpt_max_tokens
 from search_index import search_faiss_index
-import PyPDF2
+from PyPDF2 import PdfReader
 import os
 
 
@@ -86,9 +86,9 @@ def extract_text_from_pdf(pdf_path: str) -> str:
     """
     text = ""
     with open(pdf_path, 'rb') as file:
-        reader = PyPDF2.PdfFileReader(file)
-        for page_num in range(reader.numPages):
-            page = reader.getPage(page_num)
+        reader = PdfReader(file)
+        for page_num in range(len(reader.pages)):
+            page = reader.pages[page_num]
             text += page.extract_text()
     return text
 
