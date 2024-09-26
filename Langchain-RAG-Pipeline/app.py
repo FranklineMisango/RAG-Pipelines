@@ -2,7 +2,7 @@ import streamlit as st
 import os
 from constants import search_number_messages
 from langchain_utils import initialize_chat_conversation, extract_text_from_pdf
-from search_index import index_uploaded_pdfs, index_uploaded_pdfs_from_paths
+from search_index import index_pdfs
 import re
 from dotenv import load_dotenv
 load_dotenv()
@@ -38,18 +38,12 @@ if "messages" not in st.session_state:
 if 'pdfs' not in st.session_state:
     st.session_state.pdfs = []
 
-# Store the PDF paths uploaded by the user in the UI
-if 'pdf_paths' not in st.session_state:
-    st.session_state.pdf_paths = []
-
 # Ensure temp_files directory exists or create it
 temp_files_dir = "temp_files"
 if not os.path.exists(temp_files_dir):
     os.makedirs(temp_files_dir)
 
-
 with st.sidebar:
-
     openai_api_key = os.environ.get('OPENAI_API_KEY')
 
     # Add/Remove PDFs form
@@ -57,24 +51,19 @@ with st.sidebar:
     if uploaded_files:
         for uploaded_file in uploaded_files:
             if uploaded_file.name not in [pdf.name for pdf in st.session_state.pdfs]:
-                st.session_state.pdfs.append(uploaded_file)
+                # Save the uploaded file to temp_files directory
+                file_path_saved = os.path.join(temp_files_dir, uploaded_file.name)
+                with open(file_path_saved, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                st.session_state.pdfs.append(file_path_saved)
 
-    # Add/Remove PDF paths form
-    file_path_saved = os.path.join(temp_files_dir, uploaded_file.name)
     # Display a container with the PDFs uploaded by the user so far
     with st.container():
         if st.session_state.pdfs:
             st.header('PDFs uploaded:')
-            for idx, pdf in enumerate(st.session_state.pdfs):
-                st.write(pdf.name)
-                st.button(label='Remove', key=f"Remove_{pdf.name}_{idx}", on_click=remove_pdf, kwargs={'pdf_to_remove': pdf})
-                st.divider()
-
-        if st.session_state.pdf_paths:
-            st.header('PDF paths uploaded:')
-            for idx, pdf_path in enumerate(st.session_state.pdf_paths):
-                st.write(pdf_path)
-                st.button(label='Remove', key=f"Remove_{pdf_path}_{idx}", on_click=remove_pdf, kwargs={'pdf_to_remove': pdf_path})
+            for idx, pdf_path in enumerate(st.session_state.pdfs):
+                st.write(os.path.basename(pdf_path))
+                st.button(label='Remove', key=f"Remove_{os.path.basename(pdf_path)}_{idx}", on_click=remove_pdf, kwargs={'pdf_to_remove': pdf_path})
                 st.divider()
 
 # Display chat messages from history on app rerun
@@ -93,22 +82,14 @@ if query_text := st.chat_input("Your message"):
 
     # Check if FAISS index already exists, or if it needs to be created as it includes new PDFs
     session_pdfs = st.session_state.pdfs
-    session_pdf_paths = st.session_state.pdf_paths
     if (st.session_state['faiss_index']['index'] is None or 
-        set(st.session_state['faiss_index']['indexed_pdfs']) != set([pdf.name for pdf in session_pdfs]) or
-        set(st.session_state['faiss_index']['indexed_pdfs']) != set(session_pdf_paths)):
+        set(st.session_state['faiss_index']['indexed_pdfs']) != set(session_pdfs)):
         
-        st.session_state['faiss_index']['indexed_pdfs'] = [pdf.name for pdf in session_pdfs] + session_pdf_paths
+        st.session_state['faiss_index']['indexed_pdfs'] = session_pdfs
         
-        with st.spinner('Indexing PDFs...'):          
-            faiss_index = index_uploaded_pdfs(file_path_saved)
-            faiss_index_paths = index_uploaded_pdfs_from_paths(file_path_saved)
-            for pdf in session_pdfs:
-                pdf_text = extract_text_from_pdf(pdf)
-                faiss_index.add_texts([pdf_text])
-            for pdf_path in session_pdf_paths:
-                pdf_text = extract_text_from_pdf(pdf_path)
-                faiss_index_paths.add_texts([pdf_text])
+        with st.spinner('Indexing PDFs...'): 
+            st.write(session_pdfs)         
+            faiss_index = index_pdfs(session_pdfs)
             st.session_state['faiss_index']['index'] = faiss_index
     else:
         faiss_index = st.session_state['faiss_index']['index']

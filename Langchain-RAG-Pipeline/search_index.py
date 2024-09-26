@@ -18,47 +18,30 @@ def __update_metadata(pages, pdf_name):
     for page in pages:
         pdf = pdfium.PdfDocument(page.metadata['source'])
         title = pdf.get_metadata_dict().get('Title', pdf_name)
-        print(title)
         page.metadata['source'] = pdf_name
         page.metadata['title'] = title
     return pages
 
-
-def index_uploaded_pdfs(pdfs: list) -> FAISS:
+def index_pdfs(pdfs, from_paths=False) -> FAISS:
     """
-    Index a list of uploaded PDFs
+    Index a list of uploaded PDFs or PDFs from file paths
     """
     all_pages = []
     for pdf in pdfs:
-        loader = PyPDFium2Loader(pdf)
+        if from_paths:
+            loader = PyPDFium2Loader(pdf)
+            pdf_name = pdf.split('/')[-1]
+        else:
+            loader = PyPDFium2Loader(pdf)
+            pdf_name = pdf.name
+
         splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
         pages = loader.load_and_split(splitter)
-        pages = __update_metadata(pages, pdf.name)
-        all_pages += pages
-
-    faiss_index = FAISS.from_documents(all_pages, OpenAIEmbeddings())
-    print(faiss_index)
-
-    return faiss_index
-
-
-def index_uploaded_pdfs_from_paths(pdf_paths) -> FAISS:
-    """
-    Index a list of uploaded PDFs from file paths
-    """
-    all_pages = []
-    for pdf_path in pdf_paths:
-        loader = PyPDFium2Loader(pdf_path)
-        splitter = CharacterTextSplitter(chunk_size=chunk_size, chunk_overlap=chunk_overlap)
-        pages = loader.load_and_split(splitter)
-        pdf_name = pdf_path.split('/')[-1]
         pages = __update_metadata(pages, pdf_name)
         all_pages += pages
 
     faiss_index = FAISS.from_documents(all_pages, OpenAIEmbeddings())
-    print(faiss_index)
     return faiss_index
-
 
 def search_faiss_index(faiss_index: FAISS, query: str, top_k: int = number_snippets_to_retrieve) -> list:
     """
@@ -66,8 +49,3 @@ def search_faiss_index(faiss_index: FAISS, query: str, top_k: int = number_snipp
     """
     docs = faiss_index.similarity_search(query, k=top_k)
     return docs
-
-
-#Test the search_index.py
-pdf_file_path = input('File path of the PDF: ')
-index_uploaded_pdfs_from_paths([pdf_file_path])
