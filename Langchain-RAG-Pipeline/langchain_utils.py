@@ -1,8 +1,8 @@
-from langchain import FAISS
-from langchain.chat_models import ChatOpenAI
-from langchain.chains import ConversationChain
+from langchain_community.vectorstores import FAISS
+from langchain_community.chat_models import ChatOpenAI
+from langchain.chains.conversation.base import ConversationChain
 from langchain.memory import ConversationBufferWindowMemory, CombinedMemory
-from langchain import PromptTemplate
+from langchain_core.prompts.prompt import PromptTemplate
 from constants import prompt_number_snippets, gpt_model_to_use, gpt_max_tokens
 from search_index import search_faiss_index
 import PyPDF2
@@ -17,41 +17,40 @@ class SnippetsBufferWindowMemory(ConversationBufferWindowMemory):
 
     index: FAISS = None
     pages: list = []
-    memory_key = 'snippets'
+    memory_key: str = 'snippets'
     snippets: list = []
 
     def __init__(self, *args, **kwargs):
-        ConversationBufferWindowMemory.__init__(self, *args, **kwargs)
-        self.index = kwargs['index']
+        super().__init__(*args, **kwargs)
+        self.index = kwargs.get('index', None)
 
-    def load_memory_variables(self, inputs) -> dict:
-        """
-        Based on the user inputs, search the index and add the similar snippets to memory (but only if they aren't in the
-        memory already)
-        """
+def load_memory_variables(self, inputs) -> dict:
+    """
+    Based on the user inputs, search the index and add the similar snippets to memory (but only if they aren't in the
+    memory already)
+    """
 
-        # Search snippets
-        similar_snippets = search_faiss_index(self.index, inputs['user_messages_history'])
-        # In order to respect the buffer size and make its pruning work, need to reverse the list, and then un-reverse it later
-        # This way, the most relevant snippets are kept at the start of the list
-        self.snippets = [snippet for snippet in reversed(self.snippets)]
-        self.pages = [page for page in reversed(self.pages)]
+    # Search snippets
+    similar_snippets = search_faiss_index(self.index, inputs['user_messages_history'])
+    # In order to respect the buffer size and make its pruning work, need to reverse the list, and then un-reverse it later
+    # This way, the most relevant snippets are kept at the start of the list
+    self.snippets = [snippet for snippet in reversed(self.snippets)]
+    self.pages = [page for page in reversed(self.pages)]
 
-        for snippet in similar_snippets:
-            page_number = snippet.metadata['page']
-            # Load into memory only new snippets
-            snippet_to_add = f"The following snippet was extracted from the following document: "
-            if snippet.metadata['title'] == snippet.metadata['source']:
-                snippet_to_add += f"{snippet.metadata['source']}\n"
-            else:
-                snippet_to_add += f"[{snippet.metadata['title']}]({snippet.metadata['source']})\n"
+    for snippet in similar_snippets:
+        page_number = snippet.metadata['page']
+        # Load into memory only new snippets
+        snippet_to_add = f"The following snippet was extracted from the following document: "
+        if 'title' in snippet.metadata and snippet.metadata['title'] == snippet.metadata['source']:
+            snippet_to_add += f"{snippet.metadata['source']}\n"
+        else:
+            snippet_to_add += f"[{snippet.metadata.get('title', 'Unknown Title')}]({snippet.metadata['source']})\n"
 
-            snippet_to_add += f"<START_SNIPPET_PAGE_{page_number + 1}>\n"
-            snippet_to_add += f"{snippet.page_content}\n"
-            snippet_to_add += f"<END_SNIPPET_PAGE_{page_number + 1}>\n"
-            if snippet_to_add not in self.snippets:
-                self.pages.append(page_number)
-                self.snippets.append(snippet_to_add)
+        snippet_to_add += f"<START_SNIPPET_PAGE_{page_number + 1}>\n"
+        snippet_to_add += f"{snippet.page_content}\n"
+        if snippet_to_add not in self.snippets:
+            self.pages.append(page_number)
+            self.snippets.append(snippet_to_add)
 
         # Reverse list of snippets and pages, in order to keep the most relevant at the top
         # Also prune the list to keep the buffer within the define size (k)

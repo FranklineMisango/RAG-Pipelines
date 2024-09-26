@@ -1,11 +1,15 @@
 import streamlit as st
 import os
 from constants import search_number_messages
+from langchain_community.chat_models import ChatOpenAI
 from langchain_utils import initialize_chat_conversation, extract_text_from_pdf
 from search_index import index_pdfs
 import re
+
 from dotenv import load_dotenv
 load_dotenv()
+
+
 
 def remove_pdf(pdf_to_remove):
     """
@@ -50,7 +54,7 @@ with st.sidebar:
     uploaded_files = st.file_uploader("Upload relevant PDFs:", accept_multiple_files=True)
     if uploaded_files:
         for uploaded_file in uploaded_files:
-            if uploaded_file.name not in [pdf.name for pdf in st.session_state.pdfs]:
+            if uploaded_file.name not in [os.path.basename(pdf) for pdf in st.session_state.pdfs]:
                 # Save the uploaded file to temp_files directory
                 file_path_saved = os.path.join(temp_files_dir, uploaded_file.name)
                 with open(file_path_saved, "wb") as f:
@@ -106,6 +110,11 @@ if query_text := st.chat_input("Your message"):
     user_messages_history = '\n'.join(user_messages_history)
 
     with st.spinner('Querying OpenAI GPT...'):
+        # Ensure the AI acknowledges the document
+        if st.session_state.pdfs:
+            document_name = os.path.basename(st.session_state.pdfs[0])
+            st.session_state.messages.append({"role": "assistant", "content": f"I will be utilizing the uploaded document: **{document_name}**."})
+
         response = conversation.predict(input=query_text, user_messages_history=user_messages_history)
 
     # Display assistant response in chat message container
@@ -115,8 +124,8 @@ if query_text := st.chat_input("Your message"):
         for page_number, snippet in zip(snippet_memory.pages, snippet_memory.snippets):
             with st.expander(f'Snippet from page {page_number + 1}'):
                 # Remove the <START> and <END> tags from the snippets before displaying them
-                snippet = re.sub("<START_SNIPPET_PAGE_\d+>", '', snippet)
-                snippet = re.sub("<END_SNIPPET_PAGE_\d+>", '', snippet)
+                snippet = re.sub(r"<START_SNIPPET_PAGE_\d+>", '', snippet)
+                snippet = re.sub(r"<END_SNIPPET_PAGE_\d+>", '', snippet)
                 st.markdown(snippet)
 
     # Add assistant response to chat history
