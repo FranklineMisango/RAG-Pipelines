@@ -1,6 +1,6 @@
 from langchain_community.vectorstores import FAISS
 from langchain_community.document_loaders import PyPDFium2Loader
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain.text_splitter import CharacterTextSplitter
 import pypdfium2 as pdfium
 from constants import chunk_size, chunk_overlap, number_snippets_to_retrieve
