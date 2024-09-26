@@ -18,6 +18,7 @@ def __update_metadata(pages, pdf_name):
     for page in pages:
         pdf = pdfium.PdfDocument(page.metadata['source'])
         title = pdf.get_metadata_dict().get('Title', pdf_name)
+        print(title)
         page.metadata['source'] = pdf_name
         page.metadata['title'] = title
     return pages
@@ -36,6 +37,7 @@ def index_uploaded_pdfs(pdfs: list) -> FAISS:
         all_pages += pages
 
     faiss_index = FAISS.from_documents(all_pages, OpenAIEmbeddings())
+    print(faiss_index)
 
     return faiss_index
 
@@ -54,7 +56,7 @@ def index_uploaded_pdfs_from_paths(pdf_paths) -> FAISS:
         all_pages += pages
 
     faiss_index = FAISS.from_documents(all_pages, OpenAIEmbeddings())
-
+    print(faiss_index)
     return faiss_index
 
 
