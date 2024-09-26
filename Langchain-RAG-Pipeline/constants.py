@@ -3,7 +3,7 @@
 prompt_number_snippets = 3
 
 # GPT related constants
-gpt_model_to_use = 'gpt-4'
+gpt_model_to_use = 'gpt-3.5-turbo-0125'
 gpt_max_tokens = 1000
 
 # Number of past user messages that will be used to search relevant snippets

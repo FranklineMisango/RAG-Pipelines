@@ -1,75 +1,142 @@
-import os
 import streamlit as st
-from config import OPEN_AI_API_KEY
-from langchain_community.llms import OpenAI
-from langchain_community.document_loaders import PyPDFLoader
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import OpenAIEmbeddings
-from langchain.agents.agent_toolkits import create_vectorstore_agent, VectorStoreToolkit, VectorStoreInfo
-from langchain_community.vectorstores import Chroma
-import openai
+import os
+from constants import search_number_messages
+from langchain_utils import initialize_chat_conversation, extract_text_from_pdf
+from search_index import index_uploaded_pdfs, index_uploaded_pdfs_from_paths
+import re
+from dotenv import load_dotenv
+load_dotenv()
 
+def remove_pdf(pdf_to_remove):
+    """
+    Remove PDFs from the session_state. Triggered by the respective button
+    """
+    if pdf_to_remove in st.session_state.pdfs:
+        st.session_state.pdfs.remove(pdf_to_remove)
 
-os.environ['OPENAI_API_KEY'] = OPEN_AI_API_KEY
+# Page title
+st.set_page_config(page_title='📚')
+st.title('Frankline & Co. LP. Self Rostering RAG for Langchain & GPT3.xx LLM')
 
-# Create instance of OpenAI LLM
-llm = OpenAI(temperature=0.1, verbose=True)
-embeddings = OpenAIEmbeddings()
+# Initialize the faiss_index key in the session state. This can be used to avoid having to download and embed the same PDF
+# every time the user asks a question
+if 'faiss_index' not in st.session_state:
+    st.session_state['faiss_index'] = {
+        'indexed_pdfs': [],
+        'index': None
+    }
 
-# Set Streamlit app title
-st.title('Self Rostering RAG Langchain LLM')
-st.success('This app allows you to interact with Aquila, your financial digital assistant.')
+# Initialize conversation memory used by Langchain
+if 'conversation_memory' not in st.session_state:
+    st.session_state['conversation_memory'] = None
+
+# Initialize chat history used by StreamLit (for display purposes)
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+# Store the PDFs uploaded by the user in the UI
+if 'pdfs' not in st.session_state:
+    st.session_state.pdfs = []
+
+# Store the PDF paths uploaded by the user in the UI
+if 'pdf_paths' not in st.session_state:
+    st.session_state.pdf_paths = []
 
 # Ensure temp_files directory exists or create it
 temp_files_dir = "temp_files"
 if not os.path.exists(temp_files_dir):
     os.makedirs(temp_files_dir)
 
-# File upload
-uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
-if uploaded_file is not None:
-    # Save the uploaded file to the temp_files directory
-    with open(os.path.join(temp_files_dir, uploaded_file.name), "wb") as f:
-        f.write(uploaded_file.getbuffer())
+with st.sidebar:
 
-    # Get the file path of the uploaded file
-    file_path = os.path.join(temp_files_dir, uploaded_file.name)
+    openai_api_key = os.environ.get('OPENAI_API_KEY')
 
-    # Load the PDF document using PyPDFLoader
-    loader = PyPDFLoader(file_path)
+    # Add/Remove PDFs form
+    uploaded_files = st.file_uploader("Upload relevant PDFs:", accept_multiple_files=True)
+    if uploaded_files:
+        for uploaded_file in uploaded_files:
+            if uploaded_file.name not in [pdf.name for pdf in st.session_state.pdfs]:
+                st.session_state.pdfs.append(uploaded_file)
 
-    # Split pages from the PDF
-    pages = loader.load_and_split()
+    # Add/Remove PDF paths form
+    file_path_saved = os.path.join(temp_files_dir, uploaded_file.name)
+    # Display a container with the PDFs uploaded by the user so far
+    with st.container():
+        if st.session_state.pdfs:
+            st.header('PDFs uploaded:')
+            for idx, pdf in enumerate(st.session_state.pdfs):
+                st.write(pdf.name)
+                st.button(label='Remove', key=f"Remove_{pdf.name}_{idx}", on_click=remove_pdf, kwargs={'pdf_to_remove': pdf})
+                st.divider()
 
-    # Load documents into the vector database (ChromaDB)
-    store = Chroma.from_documents(pages, embeddings, collection_name='uploaded_document')
+        if st.session_state.pdf_paths:
+            st.header('PDF paths uploaded:')
+            for idx, pdf_path in enumerate(st.session_state.pdf_paths):
+                st.write(pdf_path)
+                st.button(label='Remove', key=f"Remove_{pdf_path}_{idx}", on_click=remove_pdf, kwargs={'pdf_to_remove': pdf_path})
+                st.divider()
 
-    # Create a vectorstore info object
-    vectorstore_info = VectorStoreInfo(
-        name="uploaded_document",
-        description="Uploaded financial document as a PDF",
-        vectorstore=store
-    )
+# Display chat messages from history on app rerun
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
-    # Create a vectorstore toolkit with llm parameter
-    toolkit = VectorStoreToolkit(vectorstore_info=vectorstore_info, llm=llm)
+# React to user input
+if query_text := st.chat_input("Your message"):
 
+    os.environ['OPENAI_API_KEY'] = openai_api_key
 
-# Create a text input box for the user
-prompt = st.text_input(f'Input your question or query here (Type "exit" to quit)')
+    # Display user message in chat message container, and append to session state
+    st.chat_message("user").markdown(query_text)
+    st.session_state.messages.append({"role": "user", "content": query_text})
 
-# Check if user submitted input
-if st.button('Submit'):
-    # Exit condition
-    if prompt.lower() == 'exit':
-        st.write('Exiting the application. Thank you!')
+    # Check if FAISS index already exists, or if it needs to be created as it includes new PDFs
+    session_pdfs = st.session_state.pdfs
+    session_pdf_paths = st.session_state.pdf_paths
+    if (st.session_state['faiss_index']['index'] is None or 
+        set(st.session_state['faiss_index']['indexed_pdfs']) != set([pdf.name for pdf in session_pdfs]) or
+        set(st.session_state['faiss_index']['indexed_pdfs']) != set(session_pdf_paths)):
+        
+        st.session_state['faiss_index']['indexed_pdfs'] = [pdf.name for pdf in session_pdfs] + session_pdf_paths
+        
+        with st.spinner('Indexing PDFs...'):          
+            faiss_index = index_uploaded_pdfs(file_path_saved)
+            faiss_index_paths = index_uploaded_pdfs_from_paths(file_path_saved)
+            for pdf in session_pdfs:
+                pdf_text = extract_text_from_pdf(pdf)
+                faiss_index.add_texts([pdf_text])
+            for pdf_path in session_pdf_paths:
+                pdf_text = extract_text_from_pdf(pdf_path)
+                faiss_index_paths.add_texts([pdf_text])
+            st.session_state['faiss_index']['index'] = faiss_index
+    else:
+        faiss_index = st.session_state['faiss_index']['index']
 
-    # Create a vectorstore agent
-    agent_executor = create_vectorstore_agent(llm=llm, toolkit=toolkit, verbose=True)
+    # Check if conversation memory has already been initialized and is part of the session state
+    if st.session_state['conversation_memory'] is None:
+        conversation = initialize_chat_conversation(faiss_index)
+        st.session_state['conversation_memory'] = conversation
+    else:
+        conversation = st.session_state['conversation_memory']
 
-    # Pass the prompt to the agent
-    response = agent_executor.run(prompt)
+    # Search PDF snippets using the last few user messages
+    user_messages_history = [message['content'] for message in st.session_state.messages[-search_number_messages:] if message['role'] == 'user']
+    user_messages_history = '\n'.join(user_messages_history)
 
-    # Write the response to the screen
-    st.write(response)
+    with st.spinner('Querying OpenAI GPT...'):
+        response = conversation.predict(input=query_text, user_messages_history=user_messages_history)
+
+    # Display assistant response in chat message container
+    with st.chat_message("assistant"):
+        st.markdown(response)
+        snippet_memory = conversation.memory.memories[1]
+        for page_number, snippet in zip(snippet_memory.pages, snippet_memory.snippets):
+            with st.expander(f'Snippet from page {page_number + 1}'):
+                # Remove the <START> and <END> tags from the snippets before displaying them
+                snippet = re.sub("<START_SNIPPET_PAGE_\d+>", '', snippet)
+                snippet = re.sub("<END_SNIPPET_PAGE_\d+>", '', snippet)
+                st.markdown(snippet)
+
+    # Add assistant response to chat history
+    st.session_state.messages.append({"role": "assistant", "content": response})
