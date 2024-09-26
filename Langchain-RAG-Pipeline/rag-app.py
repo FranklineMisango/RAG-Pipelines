@@ -1,7 +1,7 @@
 import os
 import streamlit as st
 from openai import OpenAI
-from config import OPEN_AI_API_KEY
+
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -11,10 +11,19 @@ from langchain import hub
 from langchain_chroma import Chroma
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import bs4
+from langchain_community.llms import OpenAI
+from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.vectorstores import Chroma
+from langchain_community.embeddings import OpenAIEmbeddings
+from langchain.agents.agent_toolkits import create_vectorstore_agent, VectorStoreToolkit, VectorStoreInfo
+from langchain_community.vectorstores import Chroma
+import openai
+
+from dotenv import load_dotenv
+load_dotenv()
 
 # Set OpenAI API key
-os.environ["OPENAI_API_KEY"] = OPEN_AI_API_KEY
-
+openai.api_key = os.getenv("OPENAI_API_KEY")
 # Initialize OpenAI instance (assuming ChatOpenAI is your intended usage)
 llm = ChatOpenAI(model="gpt-3.5-turbo-0125")
 
@@ -31,11 +40,9 @@ uploaded_file = st.file_uploader("Upload a PDF document", type=["pdf"])
 
 if uploaded_file is not None:
     # Save the uploaded file to the temp_files directory
-    with open(os.path.join(temp_files_dir, uploaded_file.name), "wb") as f:
-        f.write(uploaded_file.getbuffer())
-
-    # Get the file path of the uploaded file
     file_path = os.path.join(temp_files_dir, uploaded_file.name)
+    with open(file_path, "wb") as f:
+        f.write(uploaded_file.getbuffer())
 
     # Load the PDF document using PyPDFLoader
     pdf_loader = PyPDFLoader(file_path)
@@ -57,6 +64,10 @@ if uploaded_file is not None:
         | StrOutputParser()
     )
 
+    # Initialize session state for conversation history
+    if "conversation" not in st.session_state:
+        st.session_state.conversation = []
+
     # Create a text input box for the user
     prompt = st.text_input(f'Input your question or query here (Type "exit" to quit)')
     st.warning("Wait for the loader to process your prompt before clicking submit")
@@ -70,5 +81,17 @@ if uploaded_file is not None:
             # Generate response using RAG chain
             response = rag_chain.invoke(prompt)
 
-            # Write the response to the screen
-            st.write(response)
+            # Append user input and bot response to conversation history
+            st.session_state.conversation.append({"role": "user", "content": prompt})
+            st.session_state.conversation.append({"role": "bot", "content": response})
+
+            # Remove the temporary file after processing
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    # Display conversation history
+    for message in st.session_state.conversation:
+        if message["role"] == "user":
+            st.write(f"**You:** {message['content']}")
+        else:
+            st.write(f"**Bot:** {message['content']}")
