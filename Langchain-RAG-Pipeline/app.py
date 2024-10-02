@@ -91,7 +91,7 @@ if query_text := st.chat_input("Your message"):
     extracted_texts_combined = "\n".join(extracted_texts)
 
     # Split the extracted text into smaller chunks
-    chunk_size = 500  # Adjust the chunk size as needed
+    chunk_size = 200  # Adjust the chunk size as needed - chaged to 200 for longer text testing 
     text_chunks = [extracted_texts_combined[i:i + chunk_size] for i in range(0, len(extracted_texts_combined), chunk_size)]
 
     responses = []
