@@ -1,4 +1,5 @@
 import os
+import requests
 import streamlit as st
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import Chroma
@@ -31,15 +32,45 @@ temp_files_dir = "temp_files"
 if not os.path.exists(temp_files_dir):
     os.makedirs(temp_files_dir)
 
-# File upload
+# File upload - Allow multiple files to be uploaded
 uploaded_files = st.sidebar.file_uploader("Upload PDF documents", type=["pdf"], accept_multiple_files=True)
 
+# Ensure uploaded files are PDFs and handle errors
 if uploaded_files:
     for uploaded_file in uploaded_files:
+        if uploaded_file.type != "application/pdf":
+            st.sidebar.error(f"{uploaded_file.name} is not a PDF file.")
+            continue
         file_path = os.path.join(temp_files_dir, uploaded_file.name)
         with open(file_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
         st.session_state.pdfs.append(file_path)
+
+# Capability to add URL link or links and process them to provide the same functionality as PDFs
+st.sidebar.header("🔗 Add URL Links")
+url_input = st.sidebar.text_area("Enter URLs (one per line)")
+
+if url_input:
+    urls = url_input.split("\n")
+    for url in urls:
+        if url.strip():
+            try:
+                # Fetch the content from the URL
+                response = requests.get(url.strip())
+                response.raise_for_status()
+                content = response.content
+
+                # Save the content to a temporary file
+                file_name = f"url_content_{hash(url.strip())}.pdf"
+                file_path = os.path.join(temp_files_dir, file_name)
+                with open(file_path, "wb") as f:
+                    f.write(content)
+
+                # Add the file path to the session state
+                st.session_state.pdfs.append(file_path)
+            except requests.RequestException as e:
+                st.sidebar.error(f"Failed to fetch content from {url.strip()}: {e}")
+
 
 # Display uploaded PDFs
 if st.session_state.pdfs:
