@@ -10,6 +10,9 @@ from langchain import hub
 import openai
 from dotenv import load_dotenv
 
+import chromadb
+chromadb.api.client.SharedSystemClient.clear_system_cache()
+
 load_dotenv()
 
 # Set OpenAI API key
