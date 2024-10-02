@@ -118,7 +118,3 @@ if st.session_state.conversation:
         else:
             st.chat_message("assistant").markdown(message["content"])
 
-# Add a footer
-st.markdown("---")
-st.markdown("### About This App")
-st.markdown("This application leverages the power of Langchain and OpenAI to provide intelligent responses based on your uploaded documents. Feel free to upload your PDFs and ask questions!")
