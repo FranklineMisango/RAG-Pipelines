@@ -7,17 +7,22 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.runnables import RunnablePassthrough
 from langchain import hub
+
 import openai
 from dotenv import load_dotenv
 
 import chromadb
 chromadb.api.client.SharedSystemClient.clear_system_cache()
 
+
 load_dotenv()
 
 # Set OpenAI API key
 openai.api_key = os.getenv("OPENAI_API_KEY")
 llm = ChatOpenAI(model="gpt-3.5-turbo-0125")
+
+# Set your API key here
+api_key = os.environ.get("LANGSMITH_KEY")
 
 # Set Streamlit app title
 st.set_page_config(page_title='📚 Frankline & Co. LP. Self Rostering RAG', layout='wide')
