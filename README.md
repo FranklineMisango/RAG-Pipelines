@@ -1,6 +1,5 @@
 # RAG-Pipelines
 
-You can access the Langchain one here  : **http://54.148.10.156:8501/**
 ## Overview
 RAG-Pipelines is a cutting-edge project focused on implementing Retrieval-Augmented Generation (RAG) pipelines. These pipelines combine the strengths of retrieval-based and generation-based models to provide more accurate and contextually relevant responses.
 
